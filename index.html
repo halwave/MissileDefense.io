@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.0.0/dist/phaser.min.js"></script>
+</head>
+<body>
+
+    <script>
+    var config = {
+        type: Phaser.AUTO,
+        width: 800,
+        height: 600,
+		physics: {
+			default: 'arcade',
+			arcade: {
+				gravity: { y: 0 },
+				debug: false
+			}
+		},
+		scene: {
+            preload: preload,
+            create: create,
+            update: update,
+			extend: {
+                    player: null,
+                    reticle: null,
+					moveKeys: null,
+                    playerBullets: null,
+					zombies: null,
+					time: 0,
+                }
+        }
+    };
+
+    var game = new Phaser.Game(config);
+	var player;
+	var gun;
+	var debugText;
+	var score = 0;
+	
+	
+	var moveSpeed = 4;
+	
+	var Bullet = new Phaser.Class({
+
+    Extends: Phaser.GameObjects.Image,
+
+    initialize:
+
+		// Bullet Constructor
+		function Bullet (scene)
+		{
+			Phaser.GameObjects.Image.call(this, scene, 0, 0, 'bullet');
+			this.speed = 1;
+			this.born = 0;
+			this.direction = 0;
+			this.xSpeed = 0;
+			this.ySpeed = 0;
+			this.setSize(20,20);
+		},
+
+		// Fires a bullet from the player to the reticle
+		fire: function (shooter, target)
+		{
+			this.setPosition(shooter.x, shooter.y); // Initial position
+			this.direction = Math.atan( (target.x-this.x) / (target.y-this.y));
+
+			// Calculate X and y velocity of bullet to moves it from shooter to target
+			if (target.y >= this.y)
+			{
+				this.xSpeed = this.speed*Math.sin(this.direction);
+				this.ySpeed = this.speed*Math.cos(this.direction);
+			}
+			else
+			{
+				this.xSpeed = -this.speed*Math.sin(this.direction);
+				this.ySpeed = -this.speed*Math.cos(this.direction);
+			}
+
+			this.rotation = shooter.rotation; // angle bullet with shooters rotation
+			this.born = 0; // Time since new bullet spawned
+		},
+
+		// Updates the position of the bullet each cycle
+		update: function (time, delta)
+		{
+			this.x += this.xSpeed * delta;
+			this.y += this.ySpeed * delta;
+			this.born += delta;
+			if (this.born > 200)//range of bullet
+			{
+				this.setActive(false);
+				this.setVisible(false);
+			}
+		}
+
+	});
+	
+	var Enemy = new Phaser.Class({
+
+    Extends: Phaser.GameObjects.Image,
+
+    initialize:
+
+		// Enemy Constructor
+		function Enemy (scene)
+		{
+		    Phaser.GameObjects.Image.call(this, scene, 0, 0, 'missile');
+			this.speed = 0.08;
+			this.born = 0;
+			this.direction = 0;
+			//this.setSize(20,20);
+			this.health = 1;
+			this.lastFired = 0;
+			this.target = null;
+		},
+		
+		// Fires a bullet from the player to the reticle
+		fire: function (target)
+		{
+			var h = game.config.height;
+			var w = game.config.width;
+			
+			var x = Phaser.Math.Between(0, w);
+			var y = Phaser.Math.Between(0, h);
+			
+			while(x > target.x - 300 && x < target.x + 300)
+			{
+				x = Phaser.Math.Between(0, w);
+			}
+			
+			while(y > target.y - 300 && y < target.y + 300)
+			{
+				y = Phaser.Math.Between(0, h);
+			}
+			
+			this.x = x;
+			this.y = y;
+			this.target = target;
+		},
+
+		// Updates the position of the enemy each cycle
+		update: function (time, delta)
+		{
+			if(this.target == null || this.target.active == false)
+				return;
+				
+			// Rotates enemy to face towards player
+			this.rotation = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
+		
+			var dist = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
+			var xNormal = this.target.x - this.x;
+			var yNormal = this.target.y - this.y;
+			
+			xNormal = xNormal/dist;
+			yNormal = yNormal/dist;
+			this.x+=xNormal*delta*this.speed;
+			this.y+=yNormal*delta*this.speed;
+			//this.setVelocityX(xNormal*delta*this.speed);
+			//this.setVelocityY(yNormal*delta*this.speed);
+		}
+
+	});
+
+    function preload ()
+    {
+		this.load.image('road', 'assets/road.jpg');
+		this.load.image('player', 'assets/tank.png');            //https://www.clipartmax.com/middle/m2i8H7K9A0m2G6N4_preview-top-down-tank-png/#
+		this.load.image('missile', 'assets/missile.png');       //http://pixelartmaker.com/art/adf683844f566fe
+		this.load.image('gun', 'assets/gun.png');
+		this.load.image('bullet','assets/bullet.png');
+		this.load.image('wall1','assets/wall1.png');
+		this.load.image('wall2','assets/wall2.png')
+    }
+
+    function create ()
+    {
+		// Set world bounds
+		this.physics.world.setBounds(0, 0, 1600, 1200);
+	
+		var background = this.add.image(800, 600, 'road');
+		// Set image/sprite properties
+		background.setOrigin(0.5, 0.5).setDisplaySize(1600, 1200);
+		playerBullets = this.physics.add.group({ classType: Bullet, runChildUpdate: true });
+		zombies = this.physics.add.group({ classType: Enemy, runChildUpdate: true});
+	
+		var h = game.config.height;
+		var w = game.config.width;
+		
+		var x = Phaser.Math.Between(0, w);
+		var y = Phaser.Math.Between(0, h);
+		
+		var width = Phaser.Math.Between(50,200);
+	
+		reticle = this.physics.add.sprite(x,y,'gun');
+		reticle.setScale(0.2, 0.2);
+	
+		player = this.physics.add.sprite(x, y,'player');
+		player.setBounce(0.2);
+		player.setCollideWorldBounds(true).setDrag(500, 500);
+		
+		h = game.config.height;
+		w = game.config.width;
+		
+		var walls = this.physics.add.staticGroup();
+		walls.create(400, 100, 'wall1').setScale(1);
+		walls.create(340,170,'wall2').setScale(1);
+		
+		walls.create(600, 400, 'wall1').setScale(1);
+		walls.create(440,370,'wall2').setScale(1);
+		
+		walls.create(850, 530, 'wall1').setScale(1);
+		walls.create(900, 370, 'wall2').setScale(1);
+
+		walls.create(1000, 600, 'wall1').setScale(1);
+		walls.create(640, 570, 'wall2').setScale(1);
+
+		walls.create(500, 1000, 'wall1').setScale(1);
+		walls.create(600, 970, 'wall2').setScale(1);
+
+		walls.create(1000, 980, 'wall1').setScale(1);
+		walls.create(870, 950, 'wall2').setScale(1);
+
+		walls.create(1300, 980, 'wall1').setScale(1);
+		walls.create(1170, 950, 'wall2').setScale(1);
+
+		walls.create(1300, 480, 'wall1').setScale(1);
+		walls.create(1400, 370, 'wall2').setScale(1);
+
+		walls.create(1300, 280, 'wall1').setScale(1);
+		walls.create(1370, 650, 'wall2').setScale(1);
+
+		walls.create(1500, 180, 'wall1').setScale(1);
+		walls.create(1400, 500, 'wall2').setScale(1);
+		
+		this.physics.add.collider(player, walls);
+		
+		var i;
+		for(i = 0; i< 1; i++)
+		{
+			enemy = zombies.get().setActive(true).setVisible(true);
+			if(enemy)
+			{
+				this.physics.add.collider(enemy, walls);	
+				this.physics.add.collider(enemy, player, playerHitCallback)
+				enemy.fire(player);
+			}
+		}
+		
+		var x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+		
+		// Set camera properties
+		this.cameras.main.startFollow(player);
+		
+		// Creates object for input with WASD kets
+		moveKeys = this.input.keyboard.addKeys({
+			'up': Phaser.Input.Keyboard.KeyCodes.W,
+			'down': Phaser.Input.Keyboard.KeyCodes.S,
+			'left': Phaser.Input.Keyboard.KeyCodes.A,
+			'right': Phaser.Input.Keyboard.KeyCodes.D
+		});
+		
+		// Enables movement of player with WASD keys
+		this.input.keyboard.on('keydown_W', function (event) {
+			player.setAccelerationY(-800 * moveSpeed);
+		});
+		this.input.keyboard.on('keydown_S', function (event) {
+			player.setAccelerationY(800 * moveSpeed);
+		});
+		this.input.keyboard.on('keydown_A', function (event) {
+			player.setAccelerationX(-800 * moveSpeed);
+		});
+		this.input.keyboard.on('keydown_D', function (event) {
+			player.setAccelerationX(800 * moveSpeed);
+		});
+		
+		// Stops player acceleration on uppress of WASD keys
+		this.input.keyboard.on('keyup_W', function (event) {
+			if (moveKeys['down'].isUp)
+				player.setAccelerationY(0);
+		});
+		this.input.keyboard.on('keyup_S', function (event) {
+			if (moveKeys['up'].isUp)
+				player.setAccelerationY(0);
+		});
+		this.input.keyboard.on('keyup_A', function (event) {
+			if (moveKeys['right'].isUp)
+				player.setAccelerationX(0);
+		});
+		this.input.keyboard.on('keyup_D', function (event) {
+			if (moveKeys['left'].isUp)
+				player.setAccelerationX(0);
+		});
+		
+		this.input.mouse.capture = true;
+		
+		//line1 = new Phaser.Line(player.x, player.y, 10, 10);
+		cursors = this.input.keyboard.createCursorKeys();
+		
+		debugText = this.add.text(16, 16, 'score: ', { fontSize: '14px', fill: '#00ff00' }).setDepth(1).setScrollFactor(0);
+		
+		// Fires bullet from player on left click of mouse
+		this.input.on('pointerdown', function (pointer, time, lastFired) {
+			if (player.active === false)
+				return;
+
+			// Get bullet from bullets group
+			var bullet = playerBullets.get().setActive(true).setVisible(true);
+			if (bullet)
+			{
+				bullet.fire(player, reticle);
+				this.physics.add.collider(zombies, bullet, enemyHitCallback, null, this);
+				//this.physics.add.overlap(zombies, bullet, enemyHitCallback);
+			}
+		}, this);
+		
+		// Pointer lock will only work after mousedown
+		game.canvas.addEventListener('mousedown', function () {
+			game.input.mouse.requestPointerLock();
+		});
+
+		// Exit pointer lock when Q or escape (by default) is pressed.
+		this.input.keyboard.on('keydown_Q', function (event) {
+			if (game.input.mouse.locked)
+				game.input.mouse.releasePointerLock();
+		}, 0, this);
+		
+		// Move reticle upon locked pointer move
+		this.input.on('pointermove', function (pointer) {
+			if (this.input.mouse.locked)
+			{
+				reticle.x += pointer.movementX;
+				reticle.y += pointer.movementY;
+			}
+		}, this);
+		
+    }
+	
+	function update (time, delta)
+    {
+	
+		if (cursors.left.isDown)
+		{
+			player.setVelocityX(-moveSpeed);
+		}
+		if (cursors.right.isDown)
+		{
+			player.setVelocityX(moveSpeed);
+		}
+		if (cursors.up.isDown)
+		{
+			player.setVelocityY(-moveSpeed);
+		}
+		if (cursors.down.isDown)
+		{
+			player.setVelocityY(moveSpeed);
+		}
+		if (!cursors.left.isDown && !cursors.right.isDown)
+		{
+			player.setVelocityX(0);
+		}
+		if(!cursors.up.isDown && !cursors.down.isDown)
+		{
+			player.setVelocityY(0);
+		}
+		
+		var targetAngle =  (Phaser.Math.Angle.Between(
+			player.x, player.y, 
+			this.input.activePointer.x, this.input.activePointer.y)*Phaser.Math.RAD_TO_DEG ) + 90;
+
+		if(targetAngle < 0)
+			targetAngle += 360;
+			
+		
+		// Rotates player to face towards reticle
+		player.rotation = Phaser.Math.Angle.Between(player.x, player.y, reticle.x, reticle.y);
+		
+
+		//Make reticle move with player
+		reticle.body.velocity.x = player.body.velocity.x;
+		reticle.body.velocity.y = player.body.velocity.y;
+		
+		// Constrain velocity of player
+		constrainVelocity(player, 1000);
+		
+		// Constrain position of constrainReticle
+		constrainReticle(reticle);
+		
+		debugText.setText('score:' + score);
+		
+		if(player.active == false)
+		{
+			var gameOverText;
+			gameOverText = this.add.text(400, 300, '', { fontSize: '14px', fill: '#00ff00' }).setDepth(1).setScrollFactor(0);
+			gameOverText.setText('GAME OVER');
+			this.physics.pause();
+		}
+		else
+		{
+			if(time % 1000 >= 0 && time % 1000 <=  60)
+			{
+				enemy = zombies.get().setActive(true).setVisible(true);
+				if(enemy)
+				{
+					this.physics.add.collider(enemy, player, playerHitCallback)
+					//this.physics.add.collider(enemy, walls);
+					enemy.fire(player);
+				}
+			}
+		}
+		
+	}
+	
+	function playerHitCallback(enemyHit, playerHit)
+	{
+		if(enemyHit.active && playerHit.active)
+		{
+			playerHit.setActive(false).setVisible(false);
+			
+		}
+	}
+	
+	function enemyHitCallback(enemyHit, bulletHit)
+	{
+		if(enemyHit.active && bulletHit.active)
+		{
+			enemyHit.setActive(false).setVisible(false);
+			bulletHit.setActive(false).setVisible(false);
+			score+=1;
+		}
+		
+	}
+		
+	function MoveToTarget(obj, target, speed)
+	{
+		var dist = Phaser.Math.Distance.Between(obj.x, obj.y, target.x, target.y);
+		var xNormal = target.x - obj.x;
+		var yNormal = target.y - obj.y;
+		
+		xNormal = xNormal/dist;
+		yNormal = yNormal/dist;
+		
+		obj.setVelocityX(xNormal*speed);
+		obj.setVelocityY(yNormal*speed);
+	
+	}
+	
+	// Ensures sprite speed doesnt exceed maxVelocity while update is called
+	function constrainVelocity(sprite, maxVelocity)
+	{
+		if (!sprite || !sprite.body)
+		  return;
+
+		var angle, currVelocitySqr, vx, vy;
+		vx = sprite.body.velocity.x;
+		vy = sprite.body.velocity.y;
+		currVelocitySqr = vx * vx + vy * vy;
+
+		if (currVelocitySqr > maxVelocity * maxVelocity)
+		{
+			angle = Math.atan2(vy, vx);
+			vx = Math.cos(angle) * maxVelocity;
+			vy = Math.sin(angle) * maxVelocity;
+			sprite.body.velocity.x = vx;
+			sprite.body.velocity.y = vy;
+		}
+	}
+	
+	// Ensures reticle does not move offscreen
+	function constrainReticle(reticle)
+	{
+		var distX = reticle.x-player.x; // X distance between player & reticle
+		var distY = reticle.y-player.y; // Y distance between player & reticle
+
+		// Ensures reticle cannot be moved offscreen (player follow)
+		if (distX > 800)
+			reticle.x = player.x+800;
+		else if (distX < -800)
+			reticle.x = player.x-800;
+
+		if (distY > 600)
+			reticle.y = player.y+600;
+		else if (distY < -600)
+			reticle.y = player.y-600;
+	}
+	
+	
+    </script>
+
+</body>
+</html>
