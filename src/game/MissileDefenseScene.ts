@@ -31,6 +31,11 @@ export class MissileDefenseScene extends Phaser.Scene {
   missiles!: Phaser.Physics.Arcade.Group;
   uiManager!: UIManager;
   gameManager!: GameManager;
+  reticle!: Phaser.GameObjects.Image;
+  countdownText?: Phaser.GameObjects.Text;
+  countdownTimer?: Phaser.Time.TimerEvent;
+  isCountingDown: boolean = false;
+  waveText?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MissileDefenseScene' });
@@ -41,7 +46,7 @@ export class MissileDefenseScene extends Phaser.Scene {
     this.load.image('bullet', 'assets/bullet.png');
     this.load.image('missile', 'assets/missile.png');
     this.load.image('road', 'assets/road.jpg');
-    this.load.image('gun', 'assets/gun.png');
+    this.load.image('reticle', 'assets/reticle.png');
     this.load.image('wall1', 'assets/wall1.png');
     this.load.image('wall2', 'assets/wall2.png');
     this.load.spritesheet('explosion', 'assets/explosion.png', {
@@ -57,6 +62,13 @@ export class MissileDefenseScene extends Phaser.Scene {
     this.setupPlayer();
     this.setupGroups();
     this.setupWalls();
+    this.reticle = this.add.image(
+      this.input.activePointer.worldX,
+      this.input.activePointer.worldY,
+      'reticle'
+    );
+    this.reticle.setDepth(10);
+    this.input.setDefaultCursor('none');
     this.uiManager = new UIManager(this, GAME_WIDTH);
     this.gameManager = new GameManager(
       this,
@@ -73,7 +85,7 @@ export class MissileDefenseScene extends Phaser.Scene {
     });
     this.setupColliders();
     this.createExplosionAnim();
-    this.gameManager.startGame();
+    this.startWaveCountdown();
   }
 
   // === Setup Methods ===
@@ -104,7 +116,7 @@ export class MissileDefenseScene extends Phaser.Scene {
       key: 'explode',
       frames: this.anims.generateFrameNumbers('explosion', {
         start: 0,
-        end: 15,
+        end: 7,
       }),
       frameRate: 24,
       repeat: 0,
@@ -163,12 +175,68 @@ export class MissileDefenseScene extends Phaser.Scene {
     );
   }
 
+  startWaveCountdown(callback?: () => void) {
+    this.isCountingDown = true;
+    const countdownValues = ['3', '2', '1', 'Start!'];
+    let index = 0;
+    if (this.countdownText) this.countdownText.destroy();
+    if (this.waveText) this.waveText.destroy();
+    // Show next wave number above countdown
+    let nextWaveNum = 1;
+    if (this.gameManager && this.gameManager.wave > 0) {
+      nextWaveNum = this.gameManager.wave + (callback ? 1 : 0);
+    }
+    this.waveText = this.add
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, `Wave: ${nextWaveNum}`, {
+        fontSize: '28px',
+        color: '#fff',
+        fontStyle: 'bold',
+        stroke: '#000',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+    this.countdownText = this.add
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, countdownValues[index], {
+        fontSize: '64px',
+        color: '#fff',
+        fontStyle: 'bold',
+        stroke: '#000',
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5);
+    this.countdownTimer = this.time.addEvent({
+      delay: 1000,
+      repeat: countdownValues.length - 1,
+      callback: () => {
+        index++;
+        if (index < countdownValues.length) {
+          this.countdownText!.setText(countdownValues[index]);
+        }
+        if (index === countdownValues.length - 1) {
+          // Last value, remove after 1s
+          this.time.delayedCall(1000, () => {
+            this.countdownText?.destroy();
+            this.waveText?.destroy();
+            this.isCountingDown = false;
+            if (callback) callback();
+            else this.gameManager.startGame();
+          });
+        }
+      },
+    });
+  }
+
   update() {
     if (this.gameManager.gameOver) return;
     if (!this.player) return;
     this.player.handleInput(this.cursors, this.input.keyboard!, PLAYER_SPEED);
-    if (this.missiles.countActive(true) === 0) {
-      this.gameManager.nextWave();
+    this.reticle.setPosition(
+      this.input.activePointer.worldX,
+      this.input.activePointer.worldY
+    );
+    // Only start next wave after countdown
+    if (!this.isCountingDown && this.missiles.countActive(true) === 0) {
+      this.startWaveCountdown(() => this.gameManager.nextWave());
     }
   }
 }
