@@ -1,5 +1,3 @@
-// Domain types for the missile defense game
-
 export interface Player {
   x: number;
   y: number;

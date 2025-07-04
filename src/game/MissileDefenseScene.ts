@@ -22,6 +22,19 @@ const BULLET_FIRE_RATE = 200; // ms
 const EXPLOSION_FRAME_WIDTH = 180;
 const EXPLOSION_FRAME_HEIGHT = 180;
 
+const waveTextStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontSize: '28px',
+  color: '#fff',
+  fontStyle: 'bold',
+  stroke: '#000',
+  strokeThickness: 6,
+};
+const countdownTextStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontSize: '64px',
+  strokeThickness: 8,
+  ...waveTextStyle,
+};
+
 export class MissileDefenseScene extends Phaser.Scene {
   player!: Player;
   cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -112,6 +125,7 @@ export class MissileDefenseScene extends Phaser.Scene {
   }
 
   private createExplosionAnim() {
+    if (this.anims.get('explode')) return;
     this.anims.create({
       key: 'explode',
       frames: this.anims.generateFrameNumbers('explosion', {
@@ -187,22 +201,20 @@ export class MissileDefenseScene extends Phaser.Scene {
       nextWaveNum = this.gameManager.wave + (callback ? 1 : 0);
     }
     this.waveText = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, `Wave: ${nextWaveNum}`, {
-        fontSize: '28px',
-        color: '#fff',
-        fontStyle: 'bold',
-        stroke: '#000',
-        strokeThickness: 6,
-      })
+      .text(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 2 - 60,
+        `Wave: ${nextWaveNum}`,
+        waveTextStyle
+      )
       .setOrigin(0.5);
     this.countdownText = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, countdownValues[index], {
-        fontSize: '64px',
-        color: '#fff',
-        fontStyle: 'bold',
-        stroke: '#000',
-        strokeThickness: 8,
-      })
+      .text(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 2,
+        countdownValues[index],
+        countdownTextStyle
+      )
       .setOrigin(0.5);
     this.countdownTimer = this.time.addEvent({
       delay: 1000,

@@ -49,6 +49,7 @@ export class UIManager {
     if (this.retryButton.input) this.retryButton.input.enabled = true;
     this.retryButton.on('pointerdown', () => {
       this.retryButton?.destroy();
+      this.scene.scene.restart();
       onRetry();
     });
   }
